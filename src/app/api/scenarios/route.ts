@@ -7,13 +7,32 @@ interface ScenarioData {
   text: string;
 }
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize OpenAI client only when API key is available
+const getOpenAIClient = () => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    console.warn('OPENAI_API_KEY is not set');
+    return null;
+  }
+  
+  return new OpenAI({ apiKey });
+};
 
 export async function POST(request: Request) {
   try {
     const { userProfile } = await request.json() as { userProfile: UserProfile };
+    
+    const openai = getOpenAIClient();
+    
+    if (!openai) {
+      // Return mock data for development or when API key is missing
+      return NextResponse.json({
+        scenarios: Array(5).fill(null).map((_, index) => ({
+          id: `scenario-${index + 1}`,
+          text: `This is a placeholder scenario for ${userProfile.role} in ${userProfile.educationalSetting} education. Add your OpenAI API key to generate real scenarios.`,
+        }))
+      });
+    }
     
     const prompt = `
       Generate 10 future scenarios about digital education. Each scenario should be 1-2 paragraphs long.
