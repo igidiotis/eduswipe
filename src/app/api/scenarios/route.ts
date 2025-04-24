@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextResponse } from 'next/server';
 import { UserProfile } from '@/types';
 
@@ -7,32 +7,35 @@ interface ScenarioData {
   text: string;
 }
 
-// Initialize OpenAI client only when API key is available
-const getOpenAIClient = () => {
-  const apiKey = process.env.OPENAI_API_KEY;
+// Initialize Gemini client only when API key is available
+const getGeminiClient = () => {
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    console.warn('OPENAI_API_KEY is not set');
+    console.warn('GEMINI_API_KEY is not set');
     return null;
   }
   
-  return new OpenAI({ apiKey });
+  return new GoogleGenerativeAI(apiKey);
 };
 
 export async function POST(request: Request) {
   try {
     const { userProfile } = await request.json() as { userProfile: UserProfile };
     
-    const openai = getOpenAIClient();
+    const genAI = getGeminiClient();
     
-    if (!openai) {
+    if (!genAI) {
       // Return mock data for development or when API key is missing
       return NextResponse.json({
         scenarios: Array(5).fill(null).map((_, index) => ({
           id: `scenario-${index + 1}`,
-          text: `This is a placeholder scenario for ${userProfile.role} in ${userProfile.educationalSetting} education. Add your OpenAI API key to generate real scenarios.`,
+          text: `This is a placeholder scenario for ${userProfile.role} in ${userProfile.educationalSetting} education. Add your Gemini API key to generate real scenarios.`,
         }))
       });
     }
+    
+    // Get Gemini model - using flash version 2.5
+    const model = genAI.getGenerativeModel({ model: "gemini-flash-2.5" });
     
     const prompt = `
       Generate 10 future scenarios about digital education. Each scenario should be 1-2 paragraphs long.
@@ -46,22 +49,27 @@ export async function POST(request: Request) {
       Make the scenarios diverse, thought-provoking, and realistic.
       
       Format the response as a JSON array of objects, where each object has a single key "text" with the scenario text as the value.
-      Example: [{"text": "Scenario 1 text here..."}, {"text": "Scenario 2 text here..."}, ...]
+      Example: {"scenarios": [{"text": "Scenario 1 text here..."}, {"text": "Scenario 2 text here..."}, ...]}
+      
+      Ensure your response contains ONLY valid JSON and nothing else, so it can be parsed directly.
     `;
 
-    const completion = await openai.chat.completions.create({
-      messages: [{ role: 'user', content: prompt }],
-      model: 'gpt-4',
-      response_format: { type: 'json_object' },
-    });
-
-    const responseContent = completion.choices[0].message.content;
-    let scenariosData;
+    // Generate content with Gemini
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const responseText = response.text();
     
+    // Parse the JSON response
+    let scenariosData;
     try {
-      scenariosData = JSON.parse(responseContent || '{"scenarios": []}');
+      // The response might be enclosed in code blocks or have other text, try to extract JSON
+      const jsonMatch = responseText.match(/({.*})/s);
+      const jsonString = jsonMatch ? jsonMatch[0] : responseText;
+      
+      scenariosData = JSON.parse(jsonString);
     } catch (error) {
-      console.error('Failed to parse OpenAI response:', error);
+      console.error('Failed to parse Gemini response:', error);
+      console.log('Raw response:', responseText);
       return NextResponse.json({ error: 'Failed to parse scenarios' }, { status: 500 });
     }
 
