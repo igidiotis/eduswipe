@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     try {
       model = genAI.getGenerativeModel({ model: "gemini-flash-2.5" });
       console.log('Using Gemini Flash 2.5 model');
-    } catch (error) {
+    } catch (_) {
       console.log('Falling back to gemini-1.5-flash model');
       model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     }
