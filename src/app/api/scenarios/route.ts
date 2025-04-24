@@ -45,7 +45,10 @@ const getSampleScenarios = (userProfile: UserProfile) => {
 
 // Initialize Gemini client only when API key is available
 const getGeminiClient = () => {
+  console.log('Environment variables keys:', Object.keys(process.env));
+  console.log('Checking for GEMINI_API_KEY...');
   const apiKey = process.env.GEMINI_API_KEY;
+  console.log('API key found?', apiKey ? 'Yes, length: ' + apiKey.length : 'No');
   if (!apiKey) {
     console.warn('GEMINI_API_KEY is not set');
     return null;
