@@ -2,6 +2,11 @@ import OpenAI from 'openai';
 import { NextResponse } from 'next/server';
 import { UserProfile } from '@/types';
 
+// Define interface for scenario
+interface ScenarioData {
+  text: string;
+}
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -44,7 +49,7 @@ export async function POST(request: Request) {
     const scenarios = scenariosData.scenarios || [];
     
     // Add unique IDs to each scenario
-    const scenariosWithIds = scenarios.map((scenario: any, index: number) => ({
+    const scenariosWithIds = scenarios.map((scenario: ScenarioData, index: number) => ({
       id: `scenario-${index + 1}`,
       text: scenario.text,
     }));

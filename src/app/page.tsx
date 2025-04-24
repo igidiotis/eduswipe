@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect } from 'react';
 import { useStore } from '@/store';
 import dynamic from 'next/dynamic';
 

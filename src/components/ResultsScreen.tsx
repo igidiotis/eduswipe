@@ -49,7 +49,7 @@ export default function ResultsScreen() {
       {undecidedScenarios.length > 0 && (
         <div className="bg-yellow-50 dark:bg-yellow-900/30 border-l-4 border-yellow-400 p-4 mb-6">
           <p className="text-yellow-700 dark:text-yellow-300">
-            You have {undecidedScenarios.length} scenario(s) without a decision. Your results below reflect only the scenarios you've rated.
+            You have {undecidedScenarios.length} scenario(s) without a decision. Your results below reflect only the scenarios you&apos;ve rated.
           </p>
         </div>
       )}
