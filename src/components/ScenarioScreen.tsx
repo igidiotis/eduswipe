@@ -13,6 +13,7 @@ export default function ScenarioScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [transitioning, setTransitioning] = useState(false);
   
   // Generate scenarios when the component mounts
   useEffect(() => {
@@ -23,6 +24,7 @@ export default function ScenarioScreen() {
       setError(null);
       
       try {
+        console.log('Fetching scenarios for', userProfile);
         const response = await fetch('/api/scenarios', {
           method: 'POST',
           headers: {
@@ -43,8 +45,8 @@ export default function ScenarioScreen() {
           setScenarios(data.scenarios);
         } else {
           console.warn('API returned empty scenarios, using fallback data');
-          // If API fails to return scenarios, use sample data
-          const sampleScenarios: Scenario[] = Array.from({ length: 10 }, (_, i) => ({
+          // If API fails to return scenarios, use sample data with EXACTLY 5 scenarios
+          const sampleScenarios: Scenario[] = Array.from({ length: 5 }, (_, i) => ({
             id: `sample-${i + 1}`,
             text: `This is a sample scenario ${i + 1} about digital education future. In this hypothetical situation, imagine how technology might evolve to address the challenges you mentioned.`,
           }));
@@ -54,8 +56,8 @@ export default function ScenarioScreen() {
         console.error('Error fetching scenarios:', err);
         setError('Failed to generate scenarios. Please try again.');
         
-        // Use sample data in case of error
-        const sampleScenarios: Scenario[] = Array.from({ length: 10 }, (_, i) => ({
+        // Use sample data in case of error - EXACTLY 5 scenarios
+        const sampleScenarios: Scenario[] = Array.from({ length: 5 }, (_, i) => ({
           id: `sample-${i + 1}`,
           text: `This is a sample scenario ${i + 1} about digital education future. In this hypothetical situation, imagine how technology might evolve to address the challenges you mentioned.`,
         }));
@@ -69,16 +71,27 @@ export default function ScenarioScreen() {
   }, [userProfile, scenarios.length, setScenarios]);
   
   const handleSwipe = (id: string, decision: 'hopeful' | 'fearful') => {
+    console.log(`Decision registered: ${decision} for scenario ${id}`);
     updateScenarioDecision(id, decision);
   };
   
   const handleComplete = () => {
-    if (currentIndex < scenarios.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-    } else {
-      // No more scenarios, go to results
-      setStep('results');
-    }
+    if (transitioning) return; // Prevent multiple calls
+    
+    setTransitioning(true);
+    console.log(`Completing scenario at index ${currentIndex}`);
+    
+    // Add a delay to allow animation to complete and avoid rapid clicks
+    setTimeout(() => {
+      if (currentIndex < scenarios.length - 1) {
+        console.log(`Moving to next scenario (index ${currentIndex + 1})`);
+        setCurrentIndex(prevIndex => prevIndex + 1);
+      } else {
+        console.log('No more scenarios, showing results');
+        setStep('results');
+      }
+      setTransitioning(false);
+    }, 800); // Longer delay to ensure animation completes
   };
   
   if (loading) {
@@ -138,12 +151,19 @@ export default function ScenarioScreen() {
         </div>
       </div>
       
-      {scenarios.length > 0 && currentIndex < scenarios.length && (
+      {scenarios.length > 0 && currentIndex < scenarios.length && !transitioning && (
         <ScenarioCard
+          key={scenarios[currentIndex].id} 
           scenario={scenarios[currentIndex]}
           onSwipe={handleSwipe}
           onComplete={handleComplete}
         />
+      )}
+      
+      {transitioning && (
+        <div className="h-[450px] flex items-center justify-center">
+          <div className="w-8 h-8 border-t-2 border-blue-500 border-solid rounded-full animate-spin"></div>
+        </div>
       )}
     </div>
   );

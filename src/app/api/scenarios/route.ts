@@ -67,20 +67,19 @@ export async function POST(request: Request) {
       console.log('No API key found - returning mock scenarios');
       // Return mock data for development or when API key is missing
       return NextResponse.json({
-        scenarios: getSampleScenarios(userProfile).map((scenario, index) => ({
+        scenarios: getSampleScenarios(userProfile).slice(0, 5).map((scenario, index) => ({
           id: `scenario-${index + 1}`,
           text: scenario.text,
         }))
       });
     }
     
-    // Use a more reliable model rather than trying many
-    // gemini-pro is the most reliable model for complex structured output
-    console.log('Using gemini-pro model for better reliability');
+    // Use the reliable model
+    console.log('Using gemini-pro model for generation');
     const model = genAI.getGenerativeModel({ model: "gemini-pro" });
     
     const prompt = `
-      Generate 10 future scenarios about digital education. Each scenario should be 1-2 paragraphs long.
+      Generate exactly 5 future scenarios about digital education. Each scenario should be 1-2 paragraphs long (about 100-150 words each).
       
       The scenarios should be tailored for a ${userProfile.role} who has ${userProfile.experienceLevel} experience with digital tools
       and works in ${userProfile.educationalSetting} education.
@@ -95,20 +94,23 @@ export async function POST(request: Request) {
         "scenarios": [
           {"text": "First scenario text..."},
           {"text": "Second scenario text..."},
-          ...and so on
+          {"text": "Third scenario text..."},
+          {"text": "Fourth scenario text..."},
+          {"text": "Fifth scenario text..."}
         ]
       }
       
+      Ensure you generate EXACTLY 5 scenarios - no more, no less.
       Do not include any explanations, markdown formatting, or code blocks. Return ONLY the pure JSON object.
     `;
 
-    console.log('Sending prompt to Gemini API');
+    console.log('Sending prompt to Gemini API with request for 5 scenarios');
     
     // Generate content with Gemini
     try {
-      // Set a safety setting that allows more content
+      // Set safety setting that allows more content
       const generationConfig = {
-        temperature: 0.9,  // Slightly higher for more creativity
+        temperature: 0.9,  // Higher for more creativity
         topK: 40,
         topP: 0.95,
         maxOutputTokens: 8192,
@@ -165,11 +167,21 @@ export async function POST(request: Request) {
         
         console.log(`Successfully parsed ${scenariosData.scenarios.length} scenarios`);
         
-        const scenarios = scenariosData.scenarios;
+        let scenarios = scenariosData.scenarios;
         
+        // Ensure we have exactly 5 scenarios
         if (scenarios.length === 0) {
           console.log('Empty scenarios array returned by API');
           throw new Error('No scenarios in response');
+        } else if (scenarios.length < 5) {
+          console.log(`Only ${scenarios.length} scenarios returned, adding some fallbacks`);
+          // Add some fallbacks to reach 5
+          const fallbacks = getSampleScenarios(userProfile).slice(0, 5 - scenarios.length);
+          scenarios = [...scenarios, ...fallbacks];
+        } else if (scenarios.length > 5) {
+          console.log(`${scenarios.length} scenarios returned, limiting to 5`);
+          // Limit to 5 scenarios
+          scenarios = scenarios.slice(0, 5);
         }
         
         // Add unique IDs to each scenario
@@ -192,10 +204,10 @@ export async function POST(request: Request) {
       // One more attempt with a simpler prompt
       try {
         const simplePrompt = `
-          Generate 10 future scenarios about digital education for a ${userProfile.role}.
-          Each scenario should be 1-2 paragraphs and address the challenge: ${userProfile.challenges}.
-          Format as a JSON object with this structure ONLY:
-          {"scenarios":[{"text":"scenario text here"},{"text":"another scenario"}]}
+          Generate exactly 5 short future scenarios about digital education for a ${userProfile.role}.
+          Each scenario should address the challenge: ${userProfile.challenges}.
+          Format as JSON: {"scenarios":[{"text":"scenario 1"},{"text":"scenario 2"},{"text":"scenario 3"},{"text":"scenario 4"},{"text":"scenario 5"}]}
+          Keep it simple and valid JSON.
         `;
         
         const secondResult = await model.generateContent({
@@ -222,7 +234,18 @@ export async function POST(request: Request) {
           if (data.scenarios && Array.isArray(data.scenarios) && data.scenarios.length > 0) {
             console.log(`Second attempt successful: ${data.scenarios.length} scenarios`);
             
-            const scenariosWithIds = data.scenarios.map((scenario: ScenarioData, index: number) => ({
+            // Ensure we have exactly 5 scenarios
+            let finalScenarios = data.scenarios;
+            if (finalScenarios.length < 5) {
+              // Add fallbacks to reach 5
+              const fallbacks = getSampleScenarios(userProfile).slice(0, 5 - finalScenarios.length);
+              finalScenarios = [...finalScenarios, ...fallbacks];
+            } else if (finalScenarios.length > 5) {
+              // Limit to 5 scenarios
+              finalScenarios = finalScenarios.slice(0, 5);
+            }
+            
+            const scenariosWithIds = finalScenarios.map((scenario: ScenarioData, index: number) => ({
               id: `scenario-${index + 1}`,
               text: scenario.text,
             }));
@@ -239,7 +262,7 @@ export async function POST(request: Request) {
       // If we reach here, all AI attempts failed, use fallback
       console.log('All AI attempts failed - using fallback scenarios');
       return NextResponse.json({
-        scenarios: getSampleScenarios(userProfile).map((scenario, index) => ({
+        scenarios: getSampleScenarios(userProfile).slice(0, 5).map((scenario, index) => ({
           id: `scenario-${index + 1}`,
           text: scenario.text,
         }))
@@ -249,7 +272,7 @@ export async function POST(request: Request) {
     console.error('Error generating scenarios:', error);
     
     // If we can't even get user profile, return generic scenarios
-    const genericScenarios = Array(10).fill(null).map((_, index) => ({
+    const genericScenarios = Array(5).fill(null).map((_, index) => ({
       id: `scenario-${index + 1}`,
       text: `This is a sample scenario ${index + 1} about digital education future. In this hypothetical situation, technology continues to evolve and transform how we learn and teach.`,
     }));

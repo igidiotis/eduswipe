@@ -124,21 +124,26 @@ export default function ScenarioCard({ scenario, onSwipe, onComplete }: Props) {
     
     setHasDecided(true);
     
+    // First call onSwipe to update the decision
+    onSwipe(scenario.id, swipeDirection);
+    
     // Animate based on direction
     api.start({
       x: swipeDirection === 'hopeful' ? 1500 : -1500,
       rotate: swipeDirection === 'hopeful' ? 45 : -45,
       config: { tension: 200, friction: 25 },
       onRest: () => {
-        onSwipe(scenario.id, swipeDirection);
+        // Then call onComplete to advance to the next card
         onComplete();
         
-        // Reset for next card
-        setStartX(0);
-        setCurrentX(0);
-        setSwiping(false);
-        setDirection('none');
-        setHasDecided(false);
+        // Reset state happens after the next card is shown
+        setTimeout(() => {
+          setStartX(0);
+          setCurrentX(0);
+          setSwiping(false);
+          setDirection('none');
+          setHasDecided(false);
+        }, 100);
       }
     });
   };
