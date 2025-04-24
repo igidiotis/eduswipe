@@ -31,15 +31,18 @@ export default function ScenarioScreen() {
           body: JSON.stringify({ userProfile }),
         });
         
-        if (!response.ok) {
-          throw new Error('Failed to generate scenarios');
-        }
-        
         const data = await response.json();
         
+        if (!response.ok) {
+          console.error('API error response:', data);
+          throw new Error(data.error || 'Failed to generate scenarios');
+        }
+        
         if (data.scenarios && data.scenarios.length > 0) {
+          console.log(`Loaded ${data.scenarios.length} scenarios`);
           setScenarios(data.scenarios);
         } else {
+          console.warn('API returned empty scenarios, using fallback data');
           // If API fails to return scenarios, use sample data
           const sampleScenarios: Scenario[] = Array.from({ length: 10 }, (_, i) => ({
             id: `sample-${i + 1}`,
@@ -91,12 +94,20 @@ export default function ScenarioScreen() {
     return (
       <div className="text-center py-8">
         <p className="text-red-500 mb-4">{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-        >
-          Try Again
-        </button>
+        <div className="flex justify-center space-x-4">
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Try Again
+          </button>
+          <button
+            onClick={() => setStep('questionnaire')}
+            className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+          >
+            Back to Questionnaire
+          </button>
+        </div>
       </div>
     );
   }
