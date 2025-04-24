@@ -74,41 +74,10 @@ export async function POST(request: Request) {
       });
     }
     
-    // Try different models in sequence if one fails
-    const modelOptions = [
-      "gemini-flash-2.5",
-      "gemini-1.5-flash",
-      "gemini-1.5-pro",
-      "gemini-pro"
-    ];
-    
-    let model;
-    let modelUsed;
-    
-    // Try each model until one works
-    for (const modelName of modelOptions) {
-      try {
-        console.log(`Attempting to use ${modelName} model`);
-        model = genAI.getGenerativeModel({ model: modelName });
-        modelUsed = modelName;
-        console.log(`Successfully initialized ${modelName} model`);
-        break;
-      } catch (error) {
-        console.error(`Failed to initialize ${modelName} model:`, error);
-      }
-    }
-    
-    if (!model) {
-      console.log('All models failed to initialize - using sample scenarios');
-      return NextResponse.json({
-        scenarios: getSampleScenarios(userProfile).map((scenario, index) => ({
-          id: `scenario-${index + 1}`,
-          text: scenario.text,
-        }))
-      });
-    }
-    
-    console.log(`Using ${modelUsed} model for generation`);
+    // Use a more reliable model rather than trying many
+    // gemini-pro is the most reliable model for complex structured output
+    console.log('Using gemini-pro model for better reliability');
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
     
     const prompt = `
       Generate 10 future scenarios about digital education. Each scenario should be 1-2 paragraphs long.
@@ -130,7 +99,7 @@ export async function POST(request: Request) {
         ]
       }
       
-      Do not include any explanations, markdown formatting, or anything else outside the JSON structure.
+      Do not include any explanations, markdown formatting, or code blocks. Return ONLY the pure JSON object.
     `;
 
     console.log('Sending prompt to Gemini API');
@@ -139,7 +108,7 @@ export async function POST(request: Request) {
     try {
       // Set a safety setting that allows more content
       const generationConfig = {
-        temperature: 0.7,
+        temperature: 0.9,  // Slightly higher for more creativity
         topK: 40,
         topP: 0.95,
         maxOutputTokens: 8192,
@@ -152,8 +121,20 @@ export async function POST(request: Request) {
         generationConfig,
       });
       
+      // Check if we have a response
+      if (!result || !result.response) {
+        console.error('Empty result from Gemini API');
+        throw new Error('Empty API response');
+      }
+      
       const response = await result.response;
       const responseText = response.text();
+      
+      // Check if the response is empty
+      if (!responseText || responseText.trim().length === 0) {
+        console.error('Empty text response from Gemini API');
+        throw new Error('Empty text response');
+      }
       
       console.log('Received response from Gemini API');
       console.log('Response length:', responseText.length);
@@ -161,30 +142,20 @@ export async function POST(request: Request) {
       
       // Parse the JSON response
       let scenariosData;
+      let jsonString = responseText.trim();
+        
+      // Remove any markdown code blocks
+      if (jsonString.startsWith('```json')) {
+        jsonString = jsonString.replace(/```json\n|```/g, '').trim();
+        console.log('Removed json code block markers');
+      } else if (jsonString.startsWith('```')) {
+        jsonString = jsonString.replace(/```\n|```/g, '').trim();
+        console.log('Removed generic code block markers');
+      }
+      
+      // Try to parse the JSON
       try {
-        // Try several approaches to extract valid JSON
-        let jsonString = responseText.trim();
-        
-        // Remove any markdown code blocks
-        if (jsonString.startsWith('```json')) {
-          jsonString = jsonString.replace(/```json\n|```/g, '').trim();
-          console.log('Removed json code block markers');
-        } else if (jsonString.startsWith('```')) {
-          jsonString = jsonString.replace(/```\n|```/g, '').trim();
-          console.log('Removed generic code block markers');
-        }
-        
-        // Alternative: extract anything that looks like JSON with a regex
-        if (!jsonString.startsWith('{')) {
-          console.log('Response does not start with {, attempting to extract JSON');
-          const jsonMatch = jsonString.match(/({[\s\S]*})/);
-          if (jsonMatch) {
-            jsonString = jsonMatch[0];
-            console.log('Extracted JSON using regex');
-          }
-        }
-        
-        console.log('Attempting to parse JSON:', jsonString.substring(0, 100) + '...');
+        console.log('Attempting to parse JSON');
         scenariosData = JSON.parse(jsonString);
         
         if (!scenariosData.scenarios || !Array.isArray(scenariosData.scenarios)) {
@@ -193,62 +164,80 @@ export async function POST(request: Request) {
         }
         
         console.log(`Successfully parsed ${scenariosData.scenarios.length} scenarios`);
-      } catch (error) {
-        console.error('Failed to parse Gemini response:', error);
-        console.log('Raw response:', responseText);
         
-        // Try one more approach - if we can identify JSON objects in the text
+        const scenarios = scenariosData.scenarios;
+        
+        if (scenarios.length === 0) {
+          console.log('Empty scenarios array returned by API');
+          throw new Error('No scenarios in response');
+        }
+        
+        // Add unique IDs to each scenario
+        const scenariosWithIds = scenarios.map((scenario: ScenarioData, index: number) => ({
+          id: `scenario-${index + 1}`,
+          text: scenario.text,
+        }));
+
+        console.log(`Returning ${scenariosWithIds.length} AI-generated scenarios`);
+        return NextResponse.json({ scenarios: scenariosWithIds });
+      } catch (parseError) {
+        console.error('Failed to parse Gemini response:', parseError);
+        console.log('Raw response:', responseText);
+        throw parseError; // Re-throw to be caught by outer catch
+      }
+    } catch (apiError) {
+      console.error('Gemini API error or parsing error:', apiError);
+      console.log('Trying one more attempt with different prompt');
+      
+      // One more attempt with a simpler prompt
+      try {
+        const simplePrompt = `
+          Generate 10 future scenarios about digital education for a ${userProfile.role}.
+          Each scenario should be 1-2 paragraphs and address the challenge: ${userProfile.challenges}.
+          Format as a JSON object with this structure ONLY:
+          {"scenarios":[{"text":"scenario text here"},{"text":"another scenario"}]}
+        `;
+        
+        const secondResult = await model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: simplePrompt }] }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 8192,
+          },
+        });
+        
+        const secondResponse = await secondResult.response;
+        const secondText = secondResponse.text();
+        
+        console.log('Second attempt response preview:', secondText.substring(0, 200) + '...');
+        
+        // Try to parse, but don't throw if it fails
         try {
-          console.log('Attempting to extract individual scenario objects');
-          const scenarioMatches = responseText.match(/\{"text":[^\}]+\}/g);
-          if (scenarioMatches && scenarioMatches.length > 0) {
-            console.log(`Found ${scenarioMatches.length} scenario objects via regex`);
-            const extractedScenarios = scenarioMatches.map(match => JSON.parse(match));
-            scenariosData = { scenarios: extractedScenarios };
-            console.log('Successfully created scenarios array from extracted objects');
-          } else {
-            console.log('Failed to extract individual scenario objects');
-            throw new Error('Could not extract scenarios from response');
+          let cleanJson = secondText.trim();
+          if (cleanJson.startsWith('```')) {
+            cleanJson = cleanJson.replace(/```json\n|```/g, '').trim();
           }
-        } catch (extractError) {
-          console.error('Final extraction attempt failed:', extractError);
-          console.log('Using fallback sample scenarios');
           
-          // Use sample scenarios when all parsing attempts fail
-          return NextResponse.json({
-            scenarios: getSampleScenarios(userProfile).map((scenario, index) => ({
+          const data = JSON.parse(cleanJson);
+          if (data.scenarios && Array.isArray(data.scenarios) && data.scenarios.length > 0) {
+            console.log(`Second attempt successful: ${data.scenarios.length} scenarios`);
+            
+            const scenariosWithIds = data.scenarios.map((scenario: ScenarioData, index: number) => ({
               id: `scenario-${index + 1}`,
               text: scenario.text,
-            }))
-          });
+            }));
+            
+            return NextResponse.json({ scenarios: scenariosWithIds });
+          }
+        } catch (secondParseError) {
+          console.error('Second attempt also failed:', secondParseError);
         }
-      }
-
-      const scenarios = scenariosData.scenarios || [];
-      
-      if (scenarios.length === 0) {
-        console.log('Empty scenarios array - using sample scenarios');
-        return NextResponse.json({
-          scenarios: getSampleScenarios(userProfile).map((scenario, index) => ({
-            id: `scenario-${index + 1}`,
-            text: scenario.text,
-          }))
-        });
+      } catch (secondApiError) {
+        console.error('Second API attempt also failed:', secondApiError);
       }
       
-      // Add unique IDs to each scenario
-      const scenariosWithIds = scenarios.map((scenario: ScenarioData, index: number) => ({
-        id: `scenario-${index + 1}`,
-        text: scenario.text,
-      }));
-
-      console.log(`Returning ${scenariosWithIds.length} generated scenarios`);
-      return NextResponse.json({ scenarios: scenariosWithIds });
-      
-    } catch (apiError) {
-      console.error('Gemini API error:', apiError);
-      console.log('Using fallback sample scenarios due to API error');
-      
+      // If we reach here, all AI attempts failed, use fallback
+      console.log('All AI attempts failed - using fallback scenarios');
       return NextResponse.json({
         scenarios: getSampleScenarios(userProfile).map((scenario, index) => ({
           id: `scenario-${index + 1}`,
