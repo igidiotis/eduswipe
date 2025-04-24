@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "EduSwipe - Digital Education Futures",
-  description: "Explore your hopes and fears about digital education futures",
+  description: "Explore your hopes and fears about digital education futures through interactive scenario swiping",
 };
 
 export default function RootLayout({
